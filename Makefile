@@ -54,15 +54,15 @@ status: ## Show status of all containers
 .PHONY: status
 
 <---composer----->: ## -----------------------------------------------------------------------
-install: ## Run composer install (requires: make start)
+install: ## Run composer install
 	$(DOCKER_COMPOSE) run --rm --no-deps phpcli composer install --no-cache
 .PHONY: install
 
-update: ## Run composer update (requires: make start)
+update: ## Run composer update
 	$(DOCKER_COMPOSE) run --rm --no-deps -e XDEBUG_MODE=off phpcli composer update
 .PHONY: update
 
-autoload: ## Run composer dump-autoload (requires: make start)
+autoload: ## Run composer dump-autoload
 	$(DOCKER_COMPOSE) run --rm --no-deps phpcli composer dumpautoload
 .PHONY: autoload
 
@@ -71,7 +71,7 @@ phpunit: start ## Run all tests (requires: make start)
 	$(DOCKER_COMPOSE) run --rm phpcli vendor/bin/phpunit --bootstrap ./tests/bootstrap.php /app/tests
 .PHONY: phpunit
 
-phpunit-unit: ## Run unit tests only (fast, no DB required)
+phpunit-unit: ## Run unit tests only (fast, no services required)
 	$(DOCKER_COMPOSE) run --rm --no-deps phpcli vendor/bin/phpunit --testsuite "Unit Tests"
 .PHONY: phpunit-unit
 
@@ -91,17 +91,17 @@ phpunit-coverage-html: start ## Run all tests with HTML coverage (requires: make
 	$(DOCKER_COMPOSE) run --rm -e PCOV_ENABLED=1 phpcli vendor/bin/phpunit --bootstrap ./tests/bootstrap.php /app/tests --coverage-html tests/reports/coverage-html
 .PHONY: phpunit-coverage-html
 
-phpstan: ## Run PHPStan analysis (requires: make start)
-	$(DOCKER_COMPOSE) run --rm phpcli vendor/bin/phpstan analyse /app/src -c phpstan.neon
+phpstan: ## Run PHPStan analysis
+	$(DOCKER_COMPOSE) run --rm --no-deps phpcli vendor/bin/phpstan analyse /app/src -c phpstan.neon
 .PHONY: phpstan
 
-phpcs: ## Run coding standards (requires: make start)
-	$(DOCKER_COMPOSE) run --rm phpcli vendor/bin/phpcs /app/src
+phpcs: ## Run coding standards
+	$(DOCKER_COMPOSE) run --rm --no-deps phpcli vendor/bin/phpcs /app/src
 .PHONY: phpcs
 
 <---development----->: ## -----------------------------------------------------------------------
-shell: ## Run a shell inside the phpcli container (requires: make start)
-	$(DOCKER_COMPOSE) run --rm -it phpcli sh
+shell: ## Run a shell inside the phpcli container
+	$(DOCKER_COMPOSE) run --rm --no-deps -it phpcli sh
 .PHONY: shell
 
 logs: ## Show logs from all containers
