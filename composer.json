@@ -1,7 +1,6 @@
 {
     "name": "jardisadapter/dbconnection",
     "description": "DbConnection is a factory to create PDO database connections and delivers a professional PDO connection wrapper.",
-    "version": "1.0.0",
     "type": "library",
     "license": "PolyForm-Noncommercial-1.0.0",
     "minimum-stability": "stable",
