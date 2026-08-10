@@ -470,4 +470,120 @@ class ConnectionPoolTest extends TestCase
             'getReader() should return an instance from getReaders()'
         );
     }
+
+    /**
+     * I1 (MySQL): uncommitteter Wert in offener Tx ist ueber getReader() sichtbar MIT Flag,
+     * NICHT sichtbar OHNE Flag.
+     */
+    public function testStickyWriterMakesUncommittedWriteVisibleOverGetReaderMysql(): void
+    {
+        $this->assertStickyWriterVisibility(
+            $this->createWriter(),
+            $this->createReader(),
+            'test_sticky_writer_mysql'
+        );
+    }
+
+    /**
+     * I1 (Postgres): uncommitteter Wert in offener Tx ist ueber getReader() sichtbar MIT Flag,
+     * NICHT sichtbar OHNE Flag.
+     */
+    public function testStickyWriterMakesUncommittedWriteVisibleOverGetReaderPostgres(): void
+    {
+        $host = $_ENV['POSTGRES_HOST'] ?? 'postgres';
+        $user = $_ENV['POSTGRES_USER'] ?? 'test_user';
+        $password = $_ENV['POSTGRES_PASSWORD'] ?? 'test_password';
+        $database = $_ENV['POSTGRES_DATABASE'] ?? 'test_db';
+        $port = (int) ($_ENV['POSTGRES_PORT'] ?? 5432);
+
+        $writer = $this->factory->postgres($host, $user, $password, $database, $port);
+        $reader = $this->factory->postgres($host, $user, $password, $database, $port);
+
+        $this->assertStickyWriterVisibility($writer, $reader, 'test_sticky_writer_postgres');
+    }
+
+    /**
+     * I1 (SQLite): uncommitteter Wert in offener Tx ist ueber getReader() sichtbar MIT Flag,
+     * NICHT sichtbar OHNE Flag. Zwei getrennte Verbindungen auf dieselbe Datei (WAL-Modus),
+     * :memory: waere pro Verbindung isoliert und koennte die Grenze nicht zeigen.
+     */
+    public function testStickyWriterMakesUncommittedWriteVisibleOverGetReaderSqlite(): void
+    {
+        $path = sys_get_temp_dir() . '/test_sticky_writer_' . uniqid() . '.db';
+
+        try {
+            $writer = $this->factory->sqlite($path);
+            $reader = $this->factory->sqlite($path);
+
+            $this->assertStickyWriterVisibility($writer, $reader, 'test_sticky_writer_sqlite');
+        } finally {
+            foreach ([$path, $path . '-wal', $path . '-shm'] as $file) {
+                if (file_exists($file)) {
+                    unlink($file);
+                }
+            }
+        }
+    }
+
+    /**
+     * Shared I1 body: creates a fixture table, opens a writer transaction with an
+     * uncommitted insert, and asserts getReader() visibility with and without the
+     * sticky-writer flag — against two genuinely separate connections.
+     */
+    private function assertStickyWriterVisibility(
+        DbConnectionInterface $writer,
+        DbConnectionInterface $reader,
+        string $table
+    ): void {
+        $pdo = $writer->pdo();
+        $pdo->exec("DROP TABLE IF EXISTS {$table}");
+        $pdo->exec("CREATE TABLE {$table} (id INTEGER PRIMARY KEY, value VARCHAR(100))");
+
+        try {
+            $poolWithoutFlag = new ConnectionPool(
+                writer: $writer,
+                readers: [$reader],
+                config: new ConnectionPoolConfig(validateConnections: false, stickyWriterDuringTransaction: false)
+            );
+            $poolWithFlag = new ConnectionPool(
+                writer: $writer,
+                readers: [$reader],
+                config: new ConnectionPoolConfig(validateConnections: false, stickyWriterDuringTransaction: true)
+            );
+
+            $writer->beginTransaction();
+
+            try {
+                $pdo->exec("INSERT INTO {$table} (id, value) VALUES (1, 'uncommitted')");
+
+                $withoutFlagStmt = $poolWithoutFlag->getReader()->pdo()
+                    ->query("SELECT COUNT(*) AS c FROM {$table} WHERE id = 1");
+                $withoutFlagResult = $withoutFlagStmt->fetch(PDO::FETCH_ASSOC);
+                $withoutFlagStmt->closeCursor();
+                $this->assertEquals(
+                    0,
+                    (int) $withoutFlagResult['c'],
+                    'Uncommitted write must not be visible via getReader() without the sticky-writer flag'
+                );
+
+                $withFlagStmt = $poolWithFlag->getReader()->pdo()
+                    ->query("SELECT COUNT(*) AS c FROM {$table} WHERE id = 1");
+                $withFlagResult = $withFlagStmt->fetch(PDO::FETCH_ASSOC);
+                $withFlagStmt->closeCursor();
+                $this->assertEquals(
+                    1,
+                    (int) $withFlagResult['c'],
+                    'Uncommitted write must be visible via getReader() with the sticky-writer flag'
+                );
+            } finally {
+                // Roll back before the DROP TABLE cleanup below, on the assertion-failure path too -
+                // otherwise the cleanup would run inside a still-open transaction.
+                if ($writer->inTransaction()) {
+                    $writer->rollback();
+                }
+            }
+        } finally {
+            $pdo->exec("DROP TABLE IF EXISTS {$table}");
+        }
+    }
 }
