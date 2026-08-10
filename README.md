@@ -16,6 +16,7 @@ A PDO connection pool with read/write splitting for PHP — round-robin load bal
 ## Features
 
 - **Read/Write Splitting** — Route writes to the primary and reads to replicas automatically
+- **Transaction-Sticky Reads** — Opt-in flag routes `getReader()` to the writer while its transaction is open, so in-transaction reads see the uncommitted state
 - **Round-Robin Load Balancing** — Distributes read queries evenly across all configured readers
 - **Health Checks** — `SELECT 1` validation with positive and negative result caching
 - **Transaction Support** — `beginTransaction()`, `commit()`, `rollback()`, `inTransaction()` on every connection
@@ -95,6 +96,52 @@ try {
 // Wrap an existing PDO from a legacy system
 $legacy = $factory->fromPdo($existingPdo);
 ```
+
+### Transaction-sticky reads
+
+While the writer has an open transaction, `getReader()` can return the writer instead of an
+independent reader — so reads inside a transaction see the same uncommitted state the
+transaction is writing, instead of stale data from a replica. This matters for logic that reads
+and writes within one transaction boundary (e.g. a rule check that must decide on the state the
+transaction itself just changed):
+
+```php
+$pool = new ConnectionPool(
+    writer: $factory->mysql('primary.db', 'user', 'secret', 'mydb'),
+    readers: [
+        $factory->mysql('replica1.db', 'user', 'secret', 'mydb'),
+    ],
+    config: new ConnectionPoolConfig(stickyWriterDuringTransaction: true)
+);
+
+$pool->getWriter()->beginTransaction();
+$pool->getWriter()->pdo()->exec('UPDATE accounts SET balance = balance - 100 WHERE id = 1');
+
+// With the flag on and the writer's transaction still open, getReader() returns the writer —
+// this SELECT sees the uncommitted balance change above, not the replica's stale value.
+$balance = $pool->getReader()->pdo()->query('SELECT balance FROM accounts WHERE id = 1')->fetch();
+
+$pool->getWriter()->commit();
+// Transaction closed — getReader() is back to normal replica routing.
+```
+
+The flag is opt-in and defaults to `false`: without it, `getReader()` behaves exactly as before,
+transaction or not. When the sticky path is active, the writer goes through the same health
+check as `getWriter()` — an unhealthy writer during an open transaction throws the same
+`RuntimeException` rather than silently falling back to a reader and breaking the transaction's
+consistency.
+
+`getReaders()` and `getReaderCount()` are unaffected by the flag — they report the pool's
+configured reader **topology** (how many replicas exist, which ones), not the routing decision
+of an individual `getReader()` call.
+
+**Two honest limits:**
+- If a consumer caches a connection once per instance (e.g. a repository that resolves its
+  reader on first use and reuses it) rather than calling `getReader()` on every read, it must
+  fetch the connection *inside* the transaction for the sticky binding to take effect.
+- The Jardis kernel bootstrap does not yet pass a `ConnectionPoolConfig` through when building
+  the pool — until that wiring is updated, the flag has no effect on the generated
+  application's default bootstrap path.
 
 ## PDO Connection Options
 

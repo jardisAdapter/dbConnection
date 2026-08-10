@@ -18,6 +18,18 @@ class ConnectionPoolConfigTest extends TestCase
         $this->assertEquals(30, $config->healthCheckCacheTtl);
         $this->assertEquals(0, $config->healthCheckNegativeCacheTtl);
         $this->assertEquals(ConnectionPoolConfig::STRATEGY_ROUND_ROBIN, $config->loadBalancingStrategy);
+        $this->assertFalse($config->stickyWriterDuringTransaction);
+    }
+
+    /**
+     * U1: stickyWriterDuringTransaction defaults to false — bestand darf ohne Opt-in
+     * keine Verhaltensaenderung erfahren.
+     */
+    public function testStickyWriterDuringTransactionDefaultsToFalse(): void
+    {
+        $config = new ConnectionPoolConfig();
+
+        $this->assertFalse($config->stickyWriterDuringTransaction);
     }
 
     public function testCustomValues(): void
@@ -27,12 +39,14 @@ class ConnectionPoolConfigTest extends TestCase
             healthCheckCacheTtl: 60,
             healthCheckNegativeCacheTtl: 10,
             loadBalancingStrategy: ConnectionPoolConfig::STRATEGY_RANDOM,
+            stickyWriterDuringTransaction: true,
         );
 
         $this->assertFalse($config->validateConnections);
         $this->assertEquals(60, $config->healthCheckCacheTtl);
         $this->assertEquals(10, $config->healthCheckNegativeCacheTtl);
         $this->assertEquals(ConnectionPoolConfig::STRATEGY_RANDOM, $config->loadBalancingStrategy);
+        $this->assertTrue($config->stickyWriterDuringTransaction);
     }
 
     public function testNegativeHealthCheckTtlThrowsException(): void
@@ -94,6 +108,7 @@ class ConnectionPoolConfigTest extends TestCase
             'healthCheckCacheTtl',
             'healthCheckNegativeCacheTtl',
             'loadBalancingStrategy',
+            'stickyWriterDuringTransaction',
         ];
 
         foreach ($properties as $propertyName) {

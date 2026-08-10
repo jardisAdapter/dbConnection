@@ -27,6 +27,9 @@ final readonly class ConnectionPoolConfig
      * @param int $healthCheckCacheTtl TTL in seconds for caching positive health check results
      * @param int $healthCheckNegativeCacheTtl TTL in seconds for caching negative health check results (0 = no caching)
      * @param string $loadBalancingStrategy Strategy for distributing read queries (use STRATEGY_* constants)
+     * @param bool $stickyWriterDuringTransaction While the writer has an open transaction,
+     *        getReader() returns the writer instead of an independent reader, so reads inside
+     *        the transaction see the same uncommitted state the transaction is writing.
      * @throws InvalidArgumentException If any parameter value is invalid
      */
     public function __construct(
@@ -34,6 +37,7 @@ final readonly class ConnectionPoolConfig
         public int $healthCheckCacheTtl = 30,
         public int $healthCheckNegativeCacheTtl = 0,
         public string $loadBalancingStrategy = self::STRATEGY_ROUND_ROBIN,
+        public bool $stickyWriterDuringTransaction = false,
     ) {
         if ($healthCheckCacheTtl < 0) {
             throw new InvalidArgumentException('Health check cache TTL must be non-negative');
