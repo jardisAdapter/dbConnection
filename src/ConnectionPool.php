@@ -64,10 +64,27 @@ class ConnectionPool implements ConnectionPoolInterface
      * Automatically load-balances across available readers and performs
      * failover if a reader is unhealthy. Each reader is tried at most once.
      *
-     * @throws RuntimeException If all readers fail health checks
+     * If `stickyWriterDuringTransaction` is enabled and the writer currently has an open
+     * transaction, the writer is returned instead of an independent reader, so reads inside
+     * the transaction see the same uncommitted state the transaction is writing. The writer
+     * undergoes the same health check as `getWriter()` in this case — an unhealthy writer
+     * during a transaction fails loudly rather than silently falling back to a reader.
+     *
+     * @throws RuntimeException If all readers fail health checks, or the writer fails its
+     *         health check while the sticky-writer path is active
      */
     public function getReader(): DbConnectionInterface
     {
+        if ($this->config->stickyWriterDuringTransaction && $this->writer->inTransaction()) {
+            if ($this->config->validateConnections && !$this->isHealthy($this->writer)) {
+                throw new RuntimeException('Writer connection health check failed');
+            }
+
+            $this->stats['reads']++;
+
+            return $this->writer;
+        }
+
         $effectiveReaders = $this->getEffectiveReaders();
         /** @var array<string, true> $tried */
         $tried = [];
