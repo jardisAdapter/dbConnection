@@ -4,7 +4,7 @@ description: PDO connection pool, read/write splitting, MySQL/Postgres/SQLite. U
 user-invocable: false
 zone: post-active
 persona: C
-prerequisites: [rules-architecture, rules-patterns]
+prerequisites: [foundation-architecture, foundation-patterns]
 next: [support-dbquery, support-repository]
 ---
 
