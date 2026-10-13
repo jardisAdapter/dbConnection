@@ -41,7 +41,13 @@ $conn->inTransaction();    // bool
 $conn->beginTransaction();
 $conn->commit();
 $conn->rollback();
+// Nested brackets (JardisSupport\Contract\DbConnection\SavepointInterface — implemented by every connection here)
+$conn->savepoint('name');           // SAVEPOINT name
+$conn->releaseSavepoint('name');    // RELEASE SAVEPOINT name — keeps the nested work
+$conn->rollbackToSavepoint('name'); // ROLLBACK TO SAVEPOINT name — discards only the nested work
+// name = [A-Za-z_][A-Za-z0-9_]*, max 63 chars (InvalidArgumentException); no active transaction → RuntimeException
 ```
+Pool: `getWriter()` returns `DbConnectionInterface` — check `instanceof SavepointInterface` before calling.
 
 ## EXTERNAL CONNECTIONS (fromPdo)
 Wraps existing PDO from frameworks or legacy systems.

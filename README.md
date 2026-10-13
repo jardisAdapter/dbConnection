@@ -20,6 +20,7 @@ A PDO connection pool with read/write splitting for PHP — round-robin load bal
 - **Round-Robin Load Balancing** — Distributes read queries evenly across all configured readers
 - **Health Checks** — `SELECT 1` validation with positive and negative result caching
 - **Transaction Support** — `beginTransaction()`, `commit()`, `rollback()`, `inTransaction()` on every connection
+- **Savepoints** — `savepoint()`, `releaseSavepoint()`, `rollbackToSavepoint()` for nested transaction brackets (`SavepointInterface`, MySQL / MariaDB / PostgreSQL / SQLite)
 - **Reconnect** — `reconnect()` rebuilds the PDO connection from config on failure
 - **MySQL / PostgreSQL / SQLite** — Dedicated factory methods per driver with typed config
 - **External PDO Wrapping** — `fromPdo()` integrates existing connections without refactoring
@@ -92,6 +93,18 @@ try {
     $conn->rollback();
     throw $e;
 }
+
+// Nested bracket inside a running transaction (SavepointInterface)
+$conn->beginTransaction();
+$conn->savepoint('step_one');          // name: [A-Za-z_][A-Za-z0-9_]*, max 63 chars, else InvalidArgumentException
+try {
+    $conn->pdo()->exec('UPDATE accounts SET balance = balance - 5 WHERE id = 1');
+    $conn->releaseSavepoint('step_one');   // keep the nested work
+} catch (\Throwable $e) {
+    $conn->rollbackToSavepoint('step_one'); // discard only the nested work, transaction stays open
+}
+$conn->commit();
+// Without an active transaction all three methods throw RuntimeException.
 
 // Wrap an existing PDO from a legacy system
 $legacy = $factory->fromPdo($existingPdo);

@@ -6,6 +6,8 @@ namespace JardisAdapter\DbConnection\Connection;
 
 use JardisSupport\Contract\DbConnection\DatabaseConfigInterface;
 use JardisSupport\Contract\DbConnection\DbConnectionInterface;
+use JardisSupport\Contract\DbConnection\SavepointInterface;
+use InvalidArgumentException;
 use PDO;
 use PDOException;
 use RuntimeException;
@@ -14,7 +16,7 @@ use RuntimeException;
  * PDO connection management.
  * Base class for all database drivers providing common PDO functionality.
  */
-class PdoConnection implements DbConnectionInterface
+class PdoConnection implements DbConnectionInterface, SavepointInterface
 {
     protected ?PDO $pdo = null;
     protected DatabaseConfigInterface $config;
@@ -126,6 +128,55 @@ class PdoConnection implements DbConnectionInterface
     public function inTransaction(): bool
     {
         return $this->pdo()->inTransaction();
+    }
+
+    public function savepoint(string $name): void
+    {
+        $this->runSavepointStatement('SAVEPOINT', $name);
+    }
+
+    public function releaseSavepoint(string $name): void
+    {
+        $this->runSavepointStatement('RELEASE SAVEPOINT', $name);
+    }
+
+    public function rollbackToSavepoint(string $name): void
+    {
+        $this->runSavepointStatement('ROLLBACK TO SAVEPOINT', $name);
+    }
+
+    /**
+     * Same SQL form on MySQL/MariaDB, PostgreSQL and SQLite. The name is
+     * interpolated, so it is validated first: identifier form, max 63 characters.
+     *
+     * @throws InvalidArgumentException If the name is not a valid identifier
+     * @throws RuntimeException If no transaction is active or the statement fails
+     */
+    private function runSavepointStatement(string $statement, string $name): void
+    {
+        $isIdentifier = preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/D', $name) === 1;
+        if (!$isIdentifier || strlen($name) > SavepointInterface::MAX_NAME_LENGTH) {
+            throw new InvalidArgumentException(sprintf(
+                'Invalid savepoint name "%s": expected [A-Za-z_][A-Za-z0-9_]* with at most %d characters',
+                $name,
+                SavepointInterface::MAX_NAME_LENGTH
+            ));
+        }
+
+        $pdo = $this->pdo();
+        if (!$pdo->inTransaction()) {
+            throw new RuntimeException(sprintf('%s %s requires an active transaction', $statement, $name));
+        }
+
+        try {
+            $pdo->exec($statement . ' ' . $name);
+        } catch (PDOException $e) {
+            throw new RuntimeException(
+                sprintf('%s %s failed: %s', $statement, $name, $e->getMessage()),
+                (int) $e->getCode(),
+                $e
+            );
+        }
     }
 
     public function getDatabaseName(): string
