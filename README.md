@@ -21,6 +21,7 @@ A PDO connection pool with read/write splitting for PHP — round-robin load bal
 - **Health Checks** — `SELECT 1` validation with positive and negative result caching
 - **Transaction Support** — `beginTransaction()`, `commit()`, `rollback()`, `inTransaction()` on every connection
 - **Savepoints** — `savepoint()`, `releaseSavepoint()`, `rollbackToSavepoint()` for nested transaction brackets (`SavepointInterface`, MySQL / MariaDB / PostgreSQL / SQLite)
+- **Lazy Connections** — `mysql()`/`postgres()` open no socket; the connection opens on first access, so a request without DB access opens none. Connection errors surface at first access
 - **Reconnect** — `reconnect()` rebuilds the PDO connection from config on failure
 - **MySQL / PostgreSQL / SQLite** — Dedicated factory methods per driver with typed config
 - **External PDO Wrapping** — `fromPdo()` integrates existing connections without refactoring
@@ -49,6 +50,7 @@ $connection = $factory->mysql(
     database: 'mydb'
 );
 
+// Nothing is connected yet: the connection opens on the first access below.
 $pdo = $connection->pdo();
 $users = $pdo->query('SELECT * FROM users')->fetchAll();
 ```

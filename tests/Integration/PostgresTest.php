@@ -176,6 +176,7 @@ final class PostgresTest extends TestCase
             $this->database,
             $this->port
         );
+        $this->connection->connect();
     }
 
     public function testInvalidDatabaseThrowsException(): void
@@ -191,6 +192,7 @@ final class PostgresTest extends TestCase
             'non_existent_database',
             $this->port
         );
+        $this->connection->connect();
     }
 
     public function testCustomPdoOptions(): void
@@ -208,6 +210,7 @@ final class PostgresTest extends TestCase
             $this->port,
             options: $customOptions
         );
+        $this->connection->connect();
         $pdo = $this->connection->pdo();
         $errorMode = $pdo->getAttribute(\PDO::ATTR_ERRMODE);
 
@@ -217,19 +220,23 @@ final class PostgresTest extends TestCase
     private function createConnection(): DbConnectionInterface
     {
         $factory = new ConnectionFactory();
-        return $factory->postgres(
+        $connection = $factory->postgres(
             $this->host,
             $this->user,
             $this->password,
             $this->database,
             $this->port
         );
+        $connection->connect();
+
+        return $connection;
     }
 
     private function isPostgresAvailable(): bool
     {
         try {
             $connection = $this->createConnection();
+            $connection->connect();
             $available = $connection->isConnected();
             $connection->disconnect();
             return $available;

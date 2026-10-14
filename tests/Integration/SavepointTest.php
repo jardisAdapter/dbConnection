@@ -283,7 +283,10 @@ final class SavepointTest extends TestCase
     private function tryOpen(callable $open, string $label): DbConnectionInterface
     {
         try {
-            return $open();
+            $connection = $open();
+            $connection->connect();
+
+            return $connection;
         } catch (\Throwable $e) {
             $this->markTestSkipped($label . ' server is not available: ' . $e->getMessage());
         }
