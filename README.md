@@ -21,7 +21,7 @@ A PDO connection pool with read/write splitting for PHP — round-robin load bal
 - **Health Checks** — `SELECT 1` validation with positive and negative result caching
 - **Transaction Support** — `beginTransaction()`, `commit()`, `rollback()`, `inTransaction()` on every connection
 - **Savepoints** — `savepoint()`, `releaseSavepoint()`, `rollbackToSavepoint()` for nested transaction brackets (`SavepointInterface`, MySQL / MariaDB / PostgreSQL / SQLite)
-- **Lazy Connections** — `mysql()`/`postgres()` open no socket; the connection opens on first access, so a request without DB access opens none. Connection errors surface at first access
+- **Lazy Connections** — `mysql()`/`postgres()` open no socket; the connection opens on first access, so a request without DB access opens none. Connection errors surface at first access; SQLite opens its (local) file at creation by design, mysql/pgsql connect on first access. A failed pool health check names its cause: `Writer connection health check failed: <cause>` (the connection error is also `getPrevious()`)
 - **Reconnect** — `reconnect()` rebuilds the PDO connection from config on failure
 - **MySQL / PostgreSQL / SQLite** — Dedicated factory methods per driver with typed config
 - **External PDO Wrapping** — `fromPdo()` integrates existing connections without refactoring

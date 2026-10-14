@@ -62,9 +62,26 @@ final class LazyConnectionTest extends TestCase
         $this->assertFalse($writer->isConnected());
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Writer connection health check failed');
+        $this->expectExceptionMessage('Writer connection health check failed: ');
 
         $pool->getWriter();
+    }
+
+    public function testHealthCheckFailureCarriesConnectionCause(): void
+    {
+        $writer = (new ConnectionFactory())->mysql('127.0.0.1', 'u', 'p', 'db', 1);
+        $pool = new ConnectionPool($writer, config: new ConnectionPoolConfig(validateConnections: true));
+
+        try {
+            $pool->getWriter();
+            $this->fail('Expected RuntimeException');
+        } catch (RuntimeException $e) {
+            $cause = $e->getPrevious();
+            $this->assertInstanceOf(RuntimeException::class, $cause);
+            $this->assertStringContainsString($cause->getMessage(), $e->getMessage());
+            $this->assertInstanceOf(\PDOException::class, $cause->getPrevious());
+            $this->assertStringContainsString($cause->getPrevious()->getMessage(), $e->getMessage());
+        }
     }
 
     public function testPoolWithoutHealthCheckDoesNotConnectOnGetWriter(): void
