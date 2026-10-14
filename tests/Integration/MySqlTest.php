@@ -176,6 +176,7 @@ final class MySqlTest extends TestCase
             $this->database,
             $this->port
         );
+        $this->connection->connect();
     }
 
     public function testInvalidDatabaseThrowsException(): void
@@ -191,6 +192,7 @@ final class MySqlTest extends TestCase
             'non_existent_database',
             $this->port
         );
+        $this->connection->connect();
     }
 
     public function testCustomCharset(): void
@@ -204,6 +206,7 @@ final class MySqlTest extends TestCase
             $this->port,
             charset: 'utf8'
         );
+        $this->connection->connect();
         $pdo = $this->connection->pdo();
         $stmt = $pdo->query("SHOW VARIABLES LIKE 'character_set_client'");
         $result = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -237,6 +240,7 @@ final class MySqlTest extends TestCase
             $this->port,
             options: $customOptions
         );
+        $this->connection->connect();
         $pdo = $this->connection->pdo();
         $errorMode = $pdo->getAttribute(\PDO::ATTR_ERRMODE);
 
@@ -246,19 +250,23 @@ final class MySqlTest extends TestCase
     private function createConnection(): DbConnectionInterface
     {
         $factory = new ConnectionFactory();
-        return $factory->mysql(
+        $connection = $factory->mysql(
             $this->host,
             $this->user,
             $this->password,
             $this->database,
             $this->port
         );
+        $connection->connect();
+
+        return $connection;
     }
 
     private function isMySqlAvailable(): bool
     {
         try {
             $connection = $this->createConnection();
+            $connection->connect();
             $available = $connection->isConnected();
             $connection->disconnect();
             return $available;

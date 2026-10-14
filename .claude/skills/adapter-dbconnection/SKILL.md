@@ -18,6 +18,8 @@ ConnectionPool    → writer + readers[], health checks, load balancing, failove
 ```
 Connections always injected — never created internally by consumers.
 
+**Lazy:** `mysql()`/`postgres()` open no socket. The connection opens on first access (`pdo()`, a query, a transaction); a request without DB access opens no connection. A connection error is thrown there (same `RuntimeException`), not at creation. `isConnected()` is `false` until the first access; `connect()` connects eagerly; an explicit `disconnect()` is not reopened implicitly. `sqlite()` opens its local file at creation.
+
 ## FACTORY SIGNATURES
 ```php
 $factory = new ConnectionFactory();
@@ -31,7 +33,7 @@ $factory->fromPdo(PDO $pdo, bool $manageLifecycle = false);
 ```php
 $conn->pdo();              // PDO instance
 $conn->isConnected();      // bool
-$conn->connect();
+$conn->connect();          // eager connect (optional — pdo() connects lazily)
 $conn->disconnect();
 $conn->reconnect();
 $conn->getDatabaseName();  // string

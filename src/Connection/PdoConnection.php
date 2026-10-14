@@ -15,11 +15,24 @@ use RuntimeException;
 /**
  * PDO connection management.
  * Base class for all database drivers providing common PDO functionality.
+ *
+ * Lazy: constructing the object opens no connection. The first call that
+ * needs the PDO handle (pdo(), transactions, queries via pdo()) connects;
+ * isConnected() is false until then. connect() stays available to connect
+ * eagerly and is idempotent.
  */
 class PdoConnection implements DbConnectionInterface, SavepointInterface
 {
     protected ?PDO $pdo = null;
     protected DatabaseConfigInterface $config;
+
+    /**
+     * True until the first access (lazy initialization): the connection is
+     * opened by the first call that needs the PDO handle. An explicit
+     * disconnect() clears it, so a deliberately closed connection is never
+     * reopened implicitly (only connect()/reconnect() do that).
+     */
+    private bool $connectOnDemand = true;
 
     public function __construct(DatabaseConfigInterface $config)
     {
@@ -67,8 +80,18 @@ class PdoConnection implements DbConnectionInterface, SavepointInterface
         }
     }
 
+    /**
+     * Returns the PDO handle. The first call on a never-connected instance
+     * opens the connection (lazy); a connection error surfaces here as the
+     * same RuntimeException connect() throws.
+     *
+     */
     public function pdo(): PDO
     {
+        if ($this->pdo === null && $this->connectOnDemand) {
+            $this->connect();
+        }
+
         if ($this->pdo === null) {
             throw new RuntimeException('No active database connection');
         }
@@ -83,6 +106,7 @@ class PdoConnection implements DbConnectionInterface, SavepointInterface
 
     public function disconnect(): void
     {
+        $this->connectOnDemand = false;
         $this->pdo = null;
     }
 
