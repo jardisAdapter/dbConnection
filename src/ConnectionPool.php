@@ -21,7 +21,7 @@ class ConnectionPool implements ConnectionPoolInterface
     /** @var array<DbConnectionInterface> */
     private array $readers;
     private int $currentReaderIndex = 0;
-    /** @var array<string, array{healthy: bool, timestamp: int}> */
+    /** @var array<string, array{cause: ?\Throwable, timestamp: int}> */
     private array $healthCache = [];
     private ConnectionPoolConfig $config;
     /** @var array{reads: int, writes: int, failovers: int} */
@@ -49,9 +49,7 @@ class ConnectionPool implements ConnectionPoolInterface
      */
     public function getWriter(): DbConnectionInterface
     {
-        if ($this->config->validateConnections && !$this->isHealthy($this->writer)) {
-            throw new RuntimeException('Writer connection health check failed');
-        }
+        $this->assertWriterHealthy();
 
         $this->stats['writes']++;
 
@@ -76,9 +74,7 @@ class ConnectionPool implements ConnectionPoolInterface
     public function getReader(): DbConnectionInterface
     {
         if ($this->config->stickyWriterDuringTransaction && $this->writer->inTransaction()) {
-            if ($this->config->validateConnections && !$this->isHealthy($this->writer)) {
-                throw new RuntimeException('Writer connection health check failed');
-            }
+            $this->assertWriterHealthy();
 
             $this->stats['reads']++;
 
@@ -88,14 +84,18 @@ class ConnectionPool implements ConnectionPoolInterface
         $effectiveReaders = $this->getEffectiveReaders();
         /** @var array<string, true> $tried */
         $tried = [];
+        $lastCause = null;
 
         while (count($tried) < count($effectiveReaders)) {
             $connection = $this->selectReader($effectiveReaders, $tried);
 
-            if (!$this->config->validateConnections || $this->isHealthy($connection)) {
+            $cause = $this->config->validateConnections ? $this->healthFailure($connection) : null;
+            if ($cause === null) {
                 $this->stats['reads']++;
                 return $connection;
             }
+
+            $lastCause = $cause;
 
             $this->stats['failovers']++;
             $tried[spl_object_hash($connection)] = true;
@@ -103,6 +103,9 @@ class ConnectionPool implements ConnectionPoolInterface
 
         throw new RuntimeException(
             'All ' . count($effectiveReaders) . ' reader connections are unavailable'
+                . ($lastCause !== null ? ': ' . $lastCause->getMessage() : ''),
+            0,
+            $lastCause
         );
     }
 
@@ -198,46 +201,70 @@ class ConnectionPool implements ConnectionPoolInterface
         return $candidates[array_rand($candidates)];
     }
 
-    private function isHealthy(DbConnectionInterface $connection): bool
+    /**
+     * Single handler for the writer health gate (used by getWriter() and the sticky-writer path).
+     *
+     * @throws RuntimeException With the connection error as message suffix and as previous
+     */
+    private function assertWriterHealthy(): void
+    {
+        if (!$this->config->validateConnections) {
+            return;
+        }
+
+        $cause = $this->healthFailure($this->writer);
+        if ($cause !== null) {
+            throw new RuntimeException(
+                'Writer connection health check failed: ' . $cause->getMessage(),
+                0,
+                $cause
+            );
+        }
+    }
+
+    /**
+     * @return \Throwable|null The cause when unhealthy, null when healthy
+     */
+    private function healthFailure(DbConnectionInterface $connection): ?\Throwable
     {
         $key = spl_object_hash($connection);
         $now = time();
 
         if (isset($this->healthCache[$key])) {
             $cached = $this->healthCache[$key];
-            $ttl = $cached['healthy']
+            $ttl = $cached['cause'] === null
                 ? $this->config->healthCheckCacheTtl
                 : $this->config->healthCheckNegativeCacheTtl;
 
             if ($ttl > 0 && ($now - $cached['timestamp']) < $ttl) {
-                return $cached['healthy'];
+                return $cached['cause'];
             }
         }
 
-        $healthy = $this->performHealthCheck($connection);
+        $cause = $this->performHealthCheck($connection);
 
         $this->healthCache[$key] = [
-            'healthy' => $healthy,
+            'cause' => $cause,
             'timestamp' => $now,
         ];
 
-        return $healthy;
+        return $cause;
     }
 
-    private function performHealthCheck(DbConnectionInterface $connection): bool
+    private function performHealthCheck(DbConnectionInterface $connection): ?\Throwable
     {
         try {
             $pdo = $connection->pdo();
             $stmt = $pdo->query('SELECT 1');
-            return $stmt !== false;
-        } catch (\Exception $e) {
+            return $stmt !== false ? null : new RuntimeException('SELECT 1 returned no result');
+        } catch (\Exception) {
             try {
                 $connection->reconnect();
                 $pdo = $connection->pdo();
                 $stmt = $pdo->query('SELECT 1');
-                return $stmt !== false;
-            } catch (\Exception) {
-                return false;
+                return $stmt !== false ? null : new RuntimeException('SELECT 1 returned no result');
+            } catch (\Exception $e) {
+                return $e;
             }
         }
     }
