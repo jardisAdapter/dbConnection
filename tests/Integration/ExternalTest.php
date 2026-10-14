@@ -281,6 +281,7 @@ final class ExternalTest extends TestCase
                 $this->database,
                 $this->port
             );
+            $connection->connect();
             $available = $connection->isConnected();
             $connection->disconnect();
             return $available;
