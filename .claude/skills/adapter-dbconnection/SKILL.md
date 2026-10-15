@@ -18,7 +18,7 @@ ConnectionPool    → writer + readers[], health checks, load balancing, failove
 ```
 Connections always injected — never created internally by consumers.
 
-**Lazy:** `mysql()`/`postgres()` open no socket. The connection opens on first access (`pdo()`, a query, a transaction); a request without DB access opens no connection. A connection error is thrown there (same `RuntimeException`), not at creation. `isConnected()` is `false` until the first access; `connect()` connects eagerly; an explicit `disconnect()` is not reopened implicitly. SQLite opens the file at creation (intended: local file); mysql/pgsql connect on first access. A failed pool health check names its cause: `RuntimeException('Writer connection health check failed: <cause>', previous: $e)` (same for readers).
+**Lazy:** `mysql()`/`postgres()`/`sqlite()` open no socket and no file. The connection opens on first access (`pdo()`, a query, a transaction); a request without DB access opens no connection. A connection error is thrown there (same `RuntimeException`), not at creation. `isConnected()` is `false` until the first access; `connect()` connects eagerly; an explicit `disconnect()` is not reopened implicitly. SQLite validates the path and applies its PRAGMAs (foreign_keys, WAL, …) at the first open and after every `reconnect()`; for `:memory:` `reconnect()` keeps an open handle (a new handle would be an empty database), only an explicit `disconnect()` followed by `reconnect()` yields a fresh one. A failed pool health check names its cause: `RuntimeException('Writer connection health check failed: <cause>', previous: $e)` (same for readers).
 
 ## FACTORY SIGNATURES
 ```php
