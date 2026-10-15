@@ -114,4 +114,125 @@ final class LazyConnectionTest extends TestCase
 
         $this->assertTrue($connection->isConnected());
     }
+
+    // Bescheid Rolf 2026-10-15: alle Dienste lazy - SQLite oeffnet erst beim ersten pdo().
+
+    public function testSqliteFactoryDoesNotOpenOrCreateFile(): void
+    {
+        $dir = sys_get_temp_dir() . '/lazy_sqlite_' . uniqid();
+        mkdir($dir);
+        $path = $dir . '/app.db';
+
+        try {
+            $connection = (new ConnectionFactory())->sqlite($path);
+
+            $this->assertFalse($connection->isConnected());
+            $this->assertSame([], glob($dir . '/*') ?: []);
+            $this->assertFileDoesNotExist($path);
+            $this->assertFileDoesNotExist($path . '-wal');
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    public function testSqliteFirstPdoOpensFileAndAppliesPragmas(): void
+    {
+        $dir = sys_get_temp_dir() . '/lazy_sqlite_' . uniqid();
+        mkdir($dir);
+        $path = $dir . '/app.db';
+
+        try {
+            $connection = (new ConnectionFactory())->sqlite($path);
+            $pdo = $connection->pdo();
+
+            $this->assertTrue($connection->isConnected());
+            $this->assertFileExists($path);
+            $this->assertSame(1, (int) $pdo->query('PRAGMA foreign_keys')->fetchColumn());
+            $this->assertSame('wal', $pdo->query('PRAGMA journal_mode')->fetchColumn());
+            $this->assertSame(1, (int) $pdo->query('PRAGMA synchronous')->fetchColumn());
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    public function testSqlitePragmasAreAppliedAgainAfterReconnect(): void
+    {
+        $dir = sys_get_temp_dir() . '/lazy_sqlite_' . uniqid();
+        mkdir($dir);
+
+        try {
+            $connection = (new ConnectionFactory())->sqlite($dir . '/app.db');
+            $connection->pdo();
+            $connection->reconnect();
+            $pdo = $connection->pdo();
+
+            $this->assertSame(1, (int) $pdo->query('PRAGMA foreign_keys')->fetchColumn());
+            $this->assertSame('wal', $pdo->query('PRAGMA journal_mode')->fetchColumn());
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
+    public function testSqliteImpossiblePathThrowsOnlyOnFirstAccess(): void
+    {
+        $connection = (new ConnectionFactory())->sqlite('/non/existent/dir/app.db');
+
+        $this->assertFalse($connection->isConnected());
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('SQLite database directory is not writable');
+
+        $connection->pdo();
+    }
+
+    public function testSqliteMemoryReconnectKeepsTheExistingDatabase(): void
+    {
+        $connection = (new ConnectionFactory())->sqlite();
+        $connection->pdo()->exec('CREATE TABLE t (id INTEGER)');
+        $connection->pdo()->exec('INSERT INTO t VALUES (1)');
+
+        $connection->reconnect();
+
+        $this->assertSame(1, (int) $connection->pdo()->query('SELECT COUNT(*) FROM t')->fetchColumn());
+    }
+
+    public function testSqliteMemoryPoolHealthCheckKeepsTheDatabase(): void
+    {
+        $writer = (new ConnectionFactory())->sqlite();
+        $pool = new ConnectionPool($writer, config: new ConnectionPoolConfig(
+            validateConnections: true,
+            healthCheckCacheTtl: 0,
+        ));
+
+        $this->assertFalse($writer->isConnected());
+        $pool->getWriter()->pdo()->exec('CREATE TABLE t (id INTEGER)');
+        $pool->getWriter()->pdo()->exec('INSERT INTO t VALUES (1)');
+
+        $this->assertSame(1, (int) $pool->getWriter()->pdo()->query('SELECT COUNT(*) FROM t')->fetchColumn());
+    }
+
+    public function testSqliteMemoryReconnectAfterExplicitDisconnectOpensFreshDatabase(): void
+    {
+        $connection = (new ConnectionFactory())->sqlite();
+        $connection->pdo()->exec('CREATE TABLE t (id INTEGER)');
+        $connection->disconnect();
+
+        $connection->reconnect();
+
+        $this->assertTrue($connection->isConnected());
+        $this->assertSame(1, (int) $connection->pdo()->query(
+            "SELECT COUNT(*) FROM sqlite_master WHERE name = 'nothing'"
+        )->fetchColumn() + 1);
+        $this->assertSame(0, (int) $connection->pdo()->query(
+            "SELECT COUNT(*) FROM sqlite_master WHERE name = 't'"
+        )->fetchColumn());
+    }
+
+    private function removeDir(string $dir): void
+    {
+        foreach (glob($dir . '/*') ?: [] as $file) {
+            @unlink($file);
+        }
+        @rmdir($dir);
+    }
 }

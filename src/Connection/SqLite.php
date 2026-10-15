@@ -9,27 +9,66 @@ use RuntimeException;
 
 /**
  * SQLite database connection.
+ *
+ * Lazy like every PdoConnection: construction touches neither the file system
+ * nor the database. The first call that needs the PDO handle (pdo(),
+ * a transaction, a query) validates the path, opens the file and applies the
+ * PRAGMAs; errors surface there. The PRAGMAs run inside createPdoConnection()
+ * directly on the fresh handle (no pdo() round trip), so they are applied
+ * after the first open and after every reopen (connect() after disconnect(),
+ * reconnect()).
  */
 final class SqLite extends PdoConnection
 {
+    private const IN_MEMORY = ':memory:';
+
+    /** The path precondition is checked once, on the first open; later reopens fail as connection errors. */
+    private bool $pathValidated = false;
+
     /**
      * @param SqliteConfig $config The SQLite connection configuration
-     * @throws RuntimeException On connection error
      */
     public function __construct(SqliteConfig $config)
     {
         parent::__construct($config);
-
-        $this->validateDatabasePath($config->path);
-        $this->createPdoConnection();
-        $this->applySqliteOptimizations();
     }
 
+    /**
+     * An in-memory database lives exactly as long as its PDO handle: while one
+     * is open, reconnect() keeps it (a new handle would be a new, empty
+     * database). File databases are reopened as usual.
+     *
+     * @throws RuntimeException On reconnection error
+     */
     public function reconnect(): void
     {
-        $this->disconnect();
-        $this->createPdoConnection();
-        $this->applySqliteOptimizations();
+        if ($this->getDatabasePath() === self::IN_MEMORY && $this->isConnected()) {
+            return;
+        }
+
+        parent::reconnect();
+    }
+
+    /**
+     * Validates the path, opens the file and applies the PRAGMAs.
+     *
+     * @throws RuntimeException On invalid path or connection error
+     */
+    protected function createPdoConnection(): void
+    {
+        if (!$this->pathValidated) {
+            $this->validateDatabasePath($this->getDatabasePath());
+            $this->pathValidated = true;
+        }
+
+        parent::createPdoConnection();
+
+        try {
+            $this->applySqliteOptimizations();
+        } catch (\Throwable $e) {
+            $this->pdo = null;
+            throw $e;
+        }
     }
 
     /**
@@ -59,15 +98,21 @@ final class SqLite extends PdoConnection
     }
 
     /**
-     * Applies SQLite-specific performance optimizations.
+     * Applies SQLite-specific performance optimizations on the freshly opened
+     * handle. Works on $this->pdo directly: pdo() would re-enter the lazy open.
      */
     private function applySqliteOptimizations(): void
     {
-        $this->pdo()->exec('PRAGMA foreign_keys = ON');
-        $this->pdo()->exec('PRAGMA journal_mode = WAL');
-        $this->pdo()->exec('PRAGMA synchronous = NORMAL');
-        $this->pdo()->exec('PRAGMA temp_store = MEMORY');
-        $this->pdo()->exec('PRAGMA mmap_size = 30000000000');
+        $pdo = $this->pdo;
+        if ($pdo === null) {
+            return;
+        }
+
+        $pdo->exec('PRAGMA foreign_keys = ON');
+        $pdo->exec('PRAGMA journal_mode = WAL');
+        $pdo->exec('PRAGMA synchronous = NORMAL');
+        $pdo->exec('PRAGMA temp_store = MEMORY');
+        $pdo->exec('PRAGMA mmap_size = 30000000000');
     }
 
     /**

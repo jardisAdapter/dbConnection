@@ -17,9 +17,10 @@ use PDO;
 /**
  * Factory for creating database connections for all supported drivers.
  *
- * mysql()/postgres() return lazy connections: nothing is opened until the
- * first access (pdo(), a query, a transaction), so a connection error surfaces
- * there, not at creation. sqlite() opens its local file at creation.
+ * mysql()/postgres()/sqlite() return lazy connections: nothing is opened until
+ * the first access (pdo(), a query, a transaction), so a connection error
+ * surfaces there, not at creation. sqlite() touches neither the file system nor
+ * the database file before that first access.
  */
 final class ConnectionFactory
 {
