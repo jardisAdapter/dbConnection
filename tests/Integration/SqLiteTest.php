@@ -43,6 +43,9 @@ final class SqLiteTest extends TestCase
         $config = new SqliteConfig(path: $this->testDbPath);
         $this->connection = new SqLite($config);
 
+        // Bescheid Rolf 2026-10-15: alle Dienste lazy - Konstruktion oeffnet nichts, pdo()/connect() oeffnet.
+        $this->assertFalse($this->connection->isConnected());
+        $this->connection->connect();
         $this->assertTrue($this->connection->isConnected());
         $this->assertSame('sqlite', $this->connection->getDriverName());
     }
@@ -52,6 +55,9 @@ final class SqLiteTest extends TestCase
         $config = new SqliteConfig(path: ':memory:');
         $this->connection = new SqLite($config);
 
+        // Bescheid Rolf 2026-10-15: alle Dienste lazy - Konstruktion oeffnet nichts, pdo()/connect() oeffnet.
+        $this->assertFalse($this->connection->isConnected());
+        $this->connection->connect();
         $this->assertTrue($this->connection->isConnected());
         $this->assertSame('sqlite', $this->connection->getDriverName());
     }
@@ -70,6 +76,8 @@ final class SqLiteTest extends TestCase
     {
         $config = new SqliteConfig(path: $this->testDbPath);
         $this->connection = new SqLite($config);
+        // Bescheid Rolf 2026-10-15: alle Dienste lazy - Konstruktion oeffnet nichts, pdo()/connect() oeffnet.
+        $this->connection->connect();
         $this->assertTrue($this->connection->isConnected());
 
         $this->connection->disconnect();
@@ -175,10 +183,14 @@ final class SqLiteTest extends TestCase
         $invalidPath = '/non/existent/path/database.db';
         $config = new SqliteConfig(path: $invalidPath);
 
+        // Bescheid Rolf 2026-10-15: alle Dienste lazy - der Pfadfehler erscheint erst beim ersten Zugriff.
+        $this->connection = new SqLite($config);
+        $this->assertFalse($this->connection->isConnected());
+
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('SQLite database directory is not writable');
 
-        $this->connection = new SqLite($config);
+        $this->connection->pdo();
     }
 
     public function testCustomPdoOptions(): void
@@ -259,10 +271,14 @@ final class SqLiteTest extends TestCase
         $invalidPath = '/root/readonly/database.db';
         $config = new SqliteConfig(path: $invalidPath);
 
+        // Bescheid Rolf 2026-10-15: alle Dienste lazy - der Pfadfehler erscheint erst beim ersten Zugriff.
+        $this->connection = new SqLite($config);
+        $this->assertFalse($this->connection->isConnected());
+
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('SQLite database directory is not writable');
 
-        $this->connection = new SqLite($config);
+        $this->connection->pdo();
     }
 
     public function testValidateDatabasePathWithNonReadableFile(): void
@@ -274,10 +290,13 @@ final class SqLiteTest extends TestCase
         $config = new SqliteConfig(path: $readOnlyPath);
 
         try {
+            // Bescheid Rolf 2026-10-15: alle Dienste lazy - die Pfadpruefung greift beim ersten Zugriff.
+            $this->connection = new SqLite($config);
+
             $this->expectException(RuntimeException::class);
             $this->expectExceptionMessage('SQLite database file is not readable');
 
-            $this->connection = new SqLite($config);
+            $this->connection->pdo();
         } finally {
             chmod($readOnlyPath, 0644);
             if (file_exists($readOnlyPath)) {
@@ -365,6 +384,8 @@ final class SqLiteTest extends TestCase
     {
         $config = new SqliteConfig(path: $this->testDbPath);
         $this->connection = new SqLite($config);
+        // Bescheid Rolf 2026-10-15: alle Dienste lazy - Ausgangslage "war verbunden" jetzt explizit herstellen.
+        $this->connection->connect();
 
         $this->connection->disconnect();
 
