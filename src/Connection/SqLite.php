@@ -52,7 +52,8 @@ final class SqLite extends PdoConnection
     /**
      * Validates the path, opens the file and applies the PRAGMAs.
      *
-     * @throws RuntimeException On invalid path or connection error
+     * @throws RuntimeException On invalid path, connection error or PRAGMA failure (previous: the PDOException);
+     *                          the handle is discarded on a PRAGMA failure
      */
     protected function createPdoConnection(): void
     {
@@ -65,9 +66,13 @@ final class SqLite extends PdoConnection
 
         try {
             $this->applySqliteOptimizations();
-        } catch (\Throwable $e) {
+        } catch (\PDOException $e) {
             $this->pdo = null;
-            throw $e;
+            throw new RuntimeException(
+                'Could not apply SQLite PRAGMAs: ' . $e->getMessage(),
+                (int) $e->getCode(),
+                $e
+            );
         }
     }
 
