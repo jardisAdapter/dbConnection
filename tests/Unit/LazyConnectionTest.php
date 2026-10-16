@@ -196,7 +196,12 @@ final class LazyConnectionTest extends TestCase
         $this->assertSame(1, (int) $connection->pdo()->query('SELECT COUNT(*) FROM t')->fetchColumn());
     }
 
-    public function testSqliteMemoryPoolHealthCheckKeepsTheDatabase(): void
+    /**
+     * Healthy path only: a connected :memory: handle passes `SELECT 1`, so the
+     * health check never reaches its reconnect branch and the database stays.
+     * The reconnect branch itself is covered by the next test.
+     */
+    public function testSqliteMemoryPoolHealthCheckOnHealthyHandleKeepsTheDatabase(): void
     {
         $writer = (new ConnectionFactory())->sqlite();
         $pool = new ConnectionPool($writer, config: new ConnectionPoolConfig(
@@ -211,6 +216,57 @@ final class LazyConnectionTest extends TestCase
         $this->assertSame(1, (int) $pool->getWriter()->pdo()->query('SELECT COUNT(*) FROM t')->fetchColumn());
     }
 
+    /**
+     * An explicitly disconnected connection makes pdo() throw, which sends the
+     * health check into its reconnect branch (ConnectionPool::performHealthCheck).
+     * For :memory: that reconnect opens a fresh, empty database: the old one
+     * died with the explicit disconnect, so nothing is lost by the check itself.
+     */
+    public function testSqliteMemoryPoolHealthCheckReconnectsAfterExplicitDisconnect(): void
+    {
+        $writer = (new ConnectionFactory())->sqlite();
+        $pool = new ConnectionPool($writer, config: new ConnectionPoolConfig(
+            validateConnections: true,
+            healthCheckCacheTtl: 0,
+        ));
+
+        $pool->getWriter()->pdo()->exec('CREATE TABLE t (id INTEGER)');
+        $writer->disconnect();
+        $this->assertFalse($writer->isConnected());
+
+        $healthy = $pool->getWriter();
+
+        $this->assertSame($writer, $healthy);
+        $this->assertTrue($writer->isConnected());
+        $this->assertSame(0, (int) $healthy->pdo()->query(
+            "SELECT COUNT(*) FROM sqlite_master WHERE name = 't'"
+        )->fetchColumn());
+    }
+
+    public function testSqlitePragmaFailureIsWrappedAsRuntimeExceptionAndLeavesNoHandle(): void
+    {
+        $dir = sys_get_temp_dir() . '/lazy_sqlite_' . uniqid();
+        mkdir($dir);
+        $file = $dir . '/garbage.db';
+        file_put_contents($file, str_repeat('this is not a sqlite database ', 200));
+
+        try {
+            $connection = (new ConnectionFactory())->sqlite($file);
+
+            try {
+                $connection->pdo();
+                $this->fail('Expected RuntimeException for a PRAGMA failure');
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('Could not apply SQLite PRAGMAs', $e->getMessage());
+                $this->assertInstanceOf(\PDOException::class, $e->getPrevious());
+            }
+
+            $this->assertFalse($connection->isConnected());
+        } finally {
+            $this->removeDir($dir);
+        }
+    }
+
     public function testSqliteMemoryReconnectAfterExplicitDisconnectOpensFreshDatabase(): void
     {
         $connection = (new ConnectionFactory())->sqlite();
@@ -220,9 +276,6 @@ final class LazyConnectionTest extends TestCase
         $connection->reconnect();
 
         $this->assertTrue($connection->isConnected());
-        $this->assertSame(1, (int) $connection->pdo()->query(
-            "SELECT COUNT(*) FROM sqlite_master WHERE name = 'nothing'"
-        )->fetchColumn() + 1);
         $this->assertSame(0, (int) $connection->pdo()->query(
             "SELECT COUNT(*) FROM sqlite_master WHERE name = 't'"
         )->fetchColumn());
