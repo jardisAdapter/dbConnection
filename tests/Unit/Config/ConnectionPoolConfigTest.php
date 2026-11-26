@@ -18,18 +18,18 @@ class ConnectionPoolConfigTest extends TestCase
         $this->assertEquals(30, $config->healthCheckCacheTtl);
         $this->assertEquals(0, $config->healthCheckNegativeCacheTtl);
         $this->assertEquals(ConnectionPoolConfig::STRATEGY_ROUND_ROBIN, $config->loadBalancingStrategy);
-        $this->assertFalse($config->stickyWriterDuringTransaction);
+        $this->assertTrue($config->stickyWriterDuringTransaction);
     }
 
     /**
-     * U1: stickyWriterDuringTransaction defaults to false — bestand darf ohne Opt-in
-     * keine Verhaltensaenderung erfahren.
+     * U1: stickyWriterDuringTransaction defaults to true — reads inside an open writer
+     * transaction stay on the writer unless the flag is explicitly set to false.
      */
-    public function testStickyWriterDuringTransactionDefaultsToFalse(): void
+    public function testStickyWriterDuringTransactionDefaultsToTrue(): void
     {
         $config = new ConnectionPoolConfig();
 
-        $this->assertFalse($config->stickyWriterDuringTransaction);
+        $this->assertTrue($config->stickyWriterDuringTransaction);
     }
 
     public function testCustomValues(): void

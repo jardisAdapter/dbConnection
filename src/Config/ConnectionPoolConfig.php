@@ -30,6 +30,7 @@ final readonly class ConnectionPoolConfig
      * @param bool $stickyWriterDuringTransaction While the writer has an open transaction,
      *        getReader() returns the writer instead of an independent reader, so reads inside
      *        the transaction see the same uncommitted state the transaction is writing.
+     *        Defaults to true; pass false to route reads to the readers even during a transaction.
      * @throws InvalidArgumentException If any parameter value is invalid
      */
     public function __construct(
@@ -37,7 +38,7 @@ final readonly class ConnectionPoolConfig
         public int $healthCheckCacheTtl = 30,
         public int $healthCheckNegativeCacheTtl = 0,
         public string $loadBalancingStrategy = self::STRATEGY_ROUND_ROBIN,
-        public bool $stickyWriterDuringTransaction = false,
+        public bool $stickyWriterDuringTransaction = true,
     ) {
         if ($healthCheckCacheTtl < 0) {
             throw new InvalidArgumentException('Health check cache TTL must be non-negative');
