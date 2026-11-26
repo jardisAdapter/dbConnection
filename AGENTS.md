@@ -9,6 +9,7 @@ PDO connection management for MySQL/MariaDB, PostgreSQL, and SQLite with `Connec
 - **`fromPdo()` default `manageLifecycle: false`** — `disconnect()` is a no-op, the external system keeps control. Set to `true` only if the library is allowed to close the PDO.
 - **External connections cannot be re-connected.** `reconnect()` on a disconnected external connection throws `RuntimeException`. In the pool: a dead external connection is skipped by failover — the external system must replace it.
 - **ConnectionPool without replicas:** `new ConnectionPool(writer: $conn)` is allowed — the writer is then also used for reads. Load balancing via `ConnectionPoolConfig` (`STRATEGY_ROUND_ROBIN` default, `STRATEGY_RANDOM`).
+- **Transaction-sticky reads by default:** while the writer has an open transaction, `getReader()` returns the writer (`ConnectionPoolConfig::$stickyWriterDuringTransaction` defaults to `true`); pass `false` (kernel: `DB_POOL_STICKY_WRITER=false`) to keep reader routing.
 - **Error semantics:** connection errors throw `RuntimeException`, config errors throw `InvalidArgumentException`.
 
 ## Full Reference

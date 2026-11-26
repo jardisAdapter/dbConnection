@@ -97,13 +97,15 @@ $pool->resetStats();
 
 Load balancing strategies: `STRATEGY_ROUND_ROBIN` (default), `STRATEGY_RANDOM`.
 
-**Transaction-sticky reads:** `ConnectionPoolConfig(stickyWriterDuringTransaction: true)` (default
-`false`) makes `getReader()` return the writer while `$writer->inTransaction()` is true — same
-health check as `getWriter()`, throws the same `RuntimeException` if unhealthy. `getReaders()`/
+**Transaction-sticky reads:** `ConnectionPoolConfig::$stickyWriterDuringTransaction` (default
+`true`) makes `getReader()` return the writer while `$writer->inTransaction()` is true — same
+health check as `getWriter()`, throws the same `RuntimeException` if unhealthy. Pass
+`stickyWriterDuringTransaction: false` (kernel: `DB_POOL_STICKY_WRITER=false`) to keep reader
+routing during a transaction; a pool without config uses the default. `getReaders()`/
 `getReaderCount()` still report the configured reader topology, not the per-call routing decision.
-Two limits: consumers that cache a connection once per instance must fetch it inside the
-transaction; the kernel bootstrap does not yet pass a config through, so the flag has no effect
-on the default application bootstrap path yet.
+Limit: consumers that cache a connection once per instance must fetch it inside the transaction.
+Kernel bootstrap: without `DB_POOL_STICKY_WRITER` the package default applies; a set value is
+passed through.
 
 ## INTERFACES (JardisSupport\Contract\DbConnection)
 | Interface | Key methods |

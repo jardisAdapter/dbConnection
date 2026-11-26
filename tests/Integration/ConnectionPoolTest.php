@@ -472,8 +472,8 @@ class ConnectionPoolTest extends TestCase
     }
 
     /**
-     * I1 (MySQL): uncommitteter Wert in offener Tx ist ueber getReader() sichtbar MIT Flag,
-     * NICHT sichtbar OHNE Flag.
+     * I1 (MySQL): uncommitteter Wert in offener Tx ist ueber getReader() sichtbar MIT Flag
+     * und OHNE Config (Vorgabe), NICHT sichtbar mit Flag ausdruecklich false.
      */
     public function testStickyWriterMakesUncommittedWriteVisibleOverGetReaderMysql(): void
     {
@@ -485,8 +485,8 @@ class ConnectionPoolTest extends TestCase
     }
 
     /**
-     * I1 (Postgres): uncommitteter Wert in offener Tx ist ueber getReader() sichtbar MIT Flag,
-     * NICHT sichtbar OHNE Flag.
+     * I1 (Postgres): uncommitteter Wert in offener Tx ist ueber getReader() sichtbar MIT Flag
+     * und OHNE Config (Vorgabe), NICHT sichtbar mit Flag ausdruecklich false.
      */
     public function testStickyWriterMakesUncommittedWriteVisibleOverGetReaderPostgres(): void
     {
@@ -503,9 +503,9 @@ class ConnectionPoolTest extends TestCase
     }
 
     /**
-     * I1 (SQLite): uncommitteter Wert in offener Tx ist ueber getReader() sichtbar MIT Flag,
-     * NICHT sichtbar OHNE Flag. Zwei getrennte Verbindungen auf dieselbe Datei (WAL-Modus),
-     * :memory: waere pro Verbindung isoliert und koennte die Grenze nicht zeigen.
+     * I1 (SQLite): uncommitteter Wert in offener Tx ist ueber getReader() sichtbar MIT Flag
+     * und OHNE Config (Vorgabe), NICHT sichtbar mit Flag ausdruecklich false. Zwei getrennte
+     * Verbindungen auf dieselbe Datei (WAL-Modus), :memory: waere pro Verbindung isoliert und koennte die Grenze nicht zeigen.
      */
     public function testStickyWriterMakesUncommittedWriteVisibleOverGetReaderSqlite(): void
     {
@@ -527,8 +527,9 @@ class ConnectionPoolTest extends TestCase
 
     /**
      * Shared I1 body: creates a fixture table, opens a writer transaction with an
-     * uncommitted insert, and asserts getReader() visibility with and without the
-     * sticky-writer flag — against two genuinely separate connections.
+     * uncommitted insert, and asserts getReader() visibility for a pool without config
+     * (package default, Contract A5-S1), with the flag explicitly false and explicitly
+     * true — against two genuinely separate connections.
      */
     private function assertStickyWriterVisibility(
         DbConnectionInterface $writer,
@@ -540,6 +541,7 @@ class ConnectionPoolTest extends TestCase
         $pdo->exec("CREATE TABLE {$table} (id INTEGER PRIMARY KEY, value VARCHAR(100))");
 
         try {
+            $poolWithoutConfig = new ConnectionPool(writer: $writer, readers: [$reader]);
             $poolWithoutFlag = new ConnectionPool(
                 writer: $writer,
                 readers: [$reader],
@@ -555,6 +557,16 @@ class ConnectionPoolTest extends TestCase
 
             try {
                 $pdo->exec("INSERT INTO {$table} (id, value) VALUES (1, 'uncommitted')");
+
+                $withoutConfigStmt = $poolWithoutConfig->getReader()->pdo()
+                    ->query("SELECT COUNT(*) AS c FROM {$table} WHERE id = 1");
+                $withoutConfigResult = $withoutConfigStmt->fetch(PDO::FETCH_ASSOC);
+                $withoutConfigStmt->closeCursor();
+                $this->assertEquals(
+                    1,
+                    (int) $withoutConfigResult['c'],
+                    'Uncommitted write must be visible via getReader() of a pool without config (default)'
+                );
 
                 $withoutFlagStmt = $poolWithoutFlag->getReader()->pdo()
                     ->query("SELECT COUNT(*) AS c FROM {$table} WHERE id = 1");
