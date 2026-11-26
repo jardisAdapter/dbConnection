@@ -28,7 +28,65 @@ class ConnectionPoolTest extends TestCase
     }
 
     /**
-     * U2: Flag aus + offene Tx -> Routing unveraendert (Reader kommt).
+     * Contract A5-S1: pool without config (package default) + open writer Tx -> getReader()
+     * returns the writer.
+     */
+    public function testGetReaderReturnsWriterDuringOpenTransactionWithoutConfig(): void
+    {
+        $writer = $this->factory->sqlite();
+        $reader = $this->factory->sqlite();
+
+        $pool = new ConnectionPool(writer: $writer, readers: [$reader]);
+
+        $writer->beginTransaction();
+
+        $this->assertSame($writer, $pool->getReader());
+
+        $writer->rollback();
+    }
+
+    /**
+     * Contract A5-S2: pool without config (package default) + no open Tx -> getReader()
+     * returns the reader, as before.
+     */
+    public function testGetReaderReturnsReaderWithoutTransactionWithoutConfig(): void
+    {
+        $writer = $this->factory->sqlite();
+        $reader = $this->factory->sqlite();
+
+        $pool = new ConnectionPool(writer: $writer, readers: [$reader]);
+
+        $this->assertSame($reader, $pool->getReader());
+    }
+
+    /**
+     * Contract A5-S5: config sets other values but does not name the flag + open writer Tx
+     * -> getReader() returns the writer (the package default applies).
+     */
+    public function testGetReaderReturnsWriterDuringOpenTransactionWhenConfigOmitsFlag(): void
+    {
+        $writer = $this->factory->sqlite();
+        $reader = $this->factory->sqlite();
+
+        $pool = new ConnectionPool(
+            writer: $writer,
+            readers: [$reader],
+            config: new ConnectionPoolConfig(
+                validateConnections: false,
+                healthCheckCacheTtl: 60,
+                loadBalancingStrategy: ConnectionPoolConfig::STRATEGY_RANDOM,
+            )
+        );
+
+        $writer->beginTransaction();
+
+        $this->assertSame($writer, $pool->getReader());
+
+        $writer->rollback();
+    }
+
+    /**
+     * Contract A5-S3 (U2): flag explicitly false + open Tx -> routing unchanged (reader comes).
      */
     public function testGetReaderIgnoresOpenWriterTransactionWhenFlagDisabled(): void
     {
@@ -49,7 +107,8 @@ class ConnectionPoolTest extends TestCase
     }
 
     /**
-     * U3: Flag an + offene Tx -> getReader() liefert dieselbe Instanz wie getWriter().
+     * Contract A5-S4 (U3): flag explicitly true + open Tx -> getReader() returns the same
+     * instance as getWriter().
      */
     public function testGetReaderReturnsWriterInstanceWhenStickyFlagEnabledDuringOpenTransaction(): void
     {

@@ -62,9 +62,10 @@ class ConnectionPool implements ConnectionPoolInterface
      * Automatically load-balances across available readers and performs
      * failover if a reader is unhealthy. Each reader is tried at most once.
      *
-     * If `stickyWriterDuringTransaction` is enabled and the writer currently has an open
-     * transaction, the writer is returned instead of an independent reader, so reads inside
-     * the transaction see the same uncommitted state the transaction is writing. The writer
+     * If `stickyWriterDuringTransaction` is enabled (the default) and the writer currently has
+     * an open transaction, the writer is returned instead of an independent reader, so reads
+     * inside the transaction see the same uncommitted state the transaction is writing. Set
+     * the flag to false to keep reader routing during a transaction. The writer
      * undergoes the same health check as `getWriter()` in this case — an unhealthy writer
      * during a transaction fails loudly rather than silently falling back to a reader.
      *
